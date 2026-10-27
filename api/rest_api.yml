@@ -1,0 +1,708 @@
+openapi: 3.0.3
+info:
+  title: VK-like Social Network REST API
+  version: 1.0.0
+  description: Учебный контракт. Все операции требуют Bearer-токен. Профили, друзья
+    и посты доступны всем авторизованным пользователям; чаты — только участникам.
+    Регистрация, заявки, создание чатов и отметки прочтения вне задания.
+servers:
+- url: https://api.example.com/v1
+  description: Условный адрес, сервер не развёрнут.
+security:
+- bearerAuth: []
+tags:
+- name: Users
+- name: Friends
+- name: Posts
+- name: Media
+- name: Chats
+paths:
+  /me/friends/{friend_id}:
+    put:
+      operationId: addFriend
+      summary: Добавить друга
+      description: Сразу создать взаимную дружбу. Повторный PUT успешен (204). Добавить
+        себя нельзя (400). Несуществующий пользователь — 404. Обе стороны изменяются
+        атомарно.
+      tags:
+      - Friends
+      responses:
+        '204':
+          description: Успешно. Тело ответа отсутствует.
+        '400':
+          $ref: '#/components/responses/Error400'
+        '401':
+          $ref: '#/components/responses/Error401'
+        '404':
+          $ref: '#/components/responses/Error404'
+      parameters:
+      - $ref: '#/components/parameters/friend_id'
+    delete:
+      operationId: deleteFriend
+      summary: Удалить друга
+      description: Удалить взаимную дружбу атомарно. Если дружбы уже нет — 204. Если
+        пользователя нет — 404.
+      tags:
+      - Friends
+      responses:
+        '204':
+          description: Успешно. Тело ответа отсутствует.
+        '400':
+          $ref: '#/components/responses/Error400'
+        '401':
+          $ref: '#/components/responses/Error401'
+        '404':
+          $ref: '#/components/responses/Error404'
+      parameters:
+      - $ref: '#/components/parameters/friend_id'
+  /users/{user_id}/friends:
+    get:
+      operationId: listFriends
+      summary: Получить список друзей
+      description: 'Друзья по id ASC. Пустой список — 200 с items: [].'
+      tags:
+      - Friends
+      responses:
+        '200':
+          description: Успешный ответ.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserPage'
+        '400':
+          $ref: '#/components/responses/Error400'
+        '401':
+          $ref: '#/components/responses/Error401'
+        '404':
+          $ref: '#/components/responses/Error404'
+      parameters:
+      - $ref: '#/components/parameters/user_id'
+      - $ref: '#/components/parameters/limit'
+      - $ref: '#/components/parameters/offset'
+  /users/{user_id}:
+    get:
+      operationId: getUser
+      summary: Получить профиль
+      description: Получить профиль.
+      tags:
+      - Users
+      responses:
+        '200':
+          description: Успешный ответ.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/User'
+        '400':
+          $ref: '#/components/responses/Error400'
+        '401':
+          $ref: '#/components/responses/Error401'
+        '404':
+          $ref: '#/components/responses/Error404'
+      parameters:
+      - $ref: '#/components/parameters/user_id'
+  /posts:
+    post:
+      operationId: createPost
+      summary: Опубликовать пост
+      description: Автор определяется по токену. Нужны непустой текст или 1–10 media_ids.
+        Медиа должны существовать (404), принадлежать автору (403) и ещё не быть привязаны
+        (409). Привязка медиа и создание поста атомарны; один медиаобъект привязывается
+        только к одному посту. Пробельный текст запрещён (400).
+      tags:
+      - Posts
+      responses:
+        '201':
+          description: Успешный ответ.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Post'
+        '400':
+          $ref: '#/components/responses/Error400'
+        '401':
+          $ref: '#/components/responses/Error401'
+        '403':
+          $ref: '#/components/responses/Error403'
+        '404':
+          $ref: '#/components/responses/Error404'
+        '409':
+          $ref: '#/components/responses/Error409'
+        '415':
+          $ref: '#/components/responses/Error415'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreatePost'
+  /media:
+    post:
+      operationId: uploadMedia
+      summary: Загрузить медиа
+      description: Один JPEG, PNG или MP4 до 20 МиБ включительно. Сервер проверяет
+        содержимое файла, сохраняет его и возвращает готовый media_id в поле id. Владелец
+        определяется по токену. Загрузка сама по себе не публикует пост.
+      tags:
+      - Media
+      responses:
+        '201':
+          description: Успешный ответ.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Media'
+        '400':
+          $ref: '#/components/responses/Error400'
+        '401':
+          $ref: '#/components/responses/Error401'
+        '413':
+          $ref: '#/components/responses/Error413'
+        '415':
+          $ref: '#/components/responses/Error415'
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                file:
+                  type: string
+                  format: binary
+              required:
+              - file
+            encoding:
+              file:
+                contentType: image/jpeg, image/png, video/mp4
+  /me/feed:
+    get:
+      operationId: getFeed
+      summary: Получить домашнюю ленту
+      description: Посты текущего пользователя и его друзей по created_at DESC, id
+        DESC. Без рекомендаций и ранжирования.
+      tags:
+      - Posts
+      responses:
+        '200':
+          description: Успешный ответ.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PostPage'
+        '400':
+          $ref: '#/components/responses/Error400'
+        '401':
+          $ref: '#/components/responses/Error401'
+      parameters:
+      - $ref: '#/components/parameters/limit'
+      - $ref: '#/components/parameters/offset'
+  /users/{user_id}/posts:
+    get:
+      operationId: listUserPosts
+      summary: Получить посты пользователя
+      description: 'Посты автора по created_at DESC, id DESC. Пустая стена — 200 с
+        items: [].'
+      tags:
+      - Posts
+      responses:
+        '200':
+          description: Успешный ответ.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PostPage'
+        '400':
+          $ref: '#/components/responses/Error400'
+        '401':
+          $ref: '#/components/responses/Error401'
+        '404':
+          $ref: '#/components/responses/Error404'
+      parameters:
+      - $ref: '#/components/parameters/user_id'
+      - $ref: '#/components/parameters/limit'
+      - $ref: '#/components/parameters/offset'
+  /me/chats:
+    get:
+      operationId: listChats
+      summary: Получить список чатов
+      description: Только чаты, участником которых является текущий пользователь.
+        Порядок updated_at DESC, id DESC. last_message отсутствует у пустого чата.
+      tags:
+      - Chats
+      responses:
+        '200':
+          description: Успешный ответ.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ChatPage'
+        '400':
+          $ref: '#/components/responses/Error400'
+        '401':
+          $ref: '#/components/responses/Error401'
+      parameters:
+      - $ref: '#/components/parameters/limit'
+      - $ref: '#/components/parameters/offset'
+  /chats/{chat_id}/messages:
+    post:
+      operationId: sendMessage
+      summary: Отправить сообщение
+      description: Только в существующий чат и только для участника. Отправитель из
+        токена. Создание сообщения и обновление updated_at чата атомарны. Повторный
+        POST может создать дубликат; идемпотентность вне задания.
+      tags:
+      - Chats
+      responses:
+        '201':
+          description: Успешный ответ.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Message'
+        '400':
+          $ref: '#/components/responses/Error400'
+        '401':
+          $ref: '#/components/responses/Error401'
+        '403':
+          $ref: '#/components/responses/Error403'
+        '404':
+          $ref: '#/components/responses/Error404'
+        '415':
+          $ref: '#/components/responses/Error415'
+      parameters:
+      - $ref: '#/components/parameters/chat_id'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateMessage'
+    get:
+      operationId: listMessages
+      summary: Прочитать историю сообщений
+      description: 'Только для участника чата. Порядок created_at DESC, id DESC: новые
+        сообщения первыми. Не меняет отметки прочтения. Несуществующий чат — 404,
+        существующий чужой — 403.'
+      tags:
+      - Chats
+      responses:
+        '200':
+          description: Успешный ответ.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MessagePage'
+        '400':
+          $ref: '#/components/responses/Error400'
+        '401':
+          $ref: '#/components/responses/Error401'
+        '403':
+          $ref: '#/components/responses/Error403'
+        '404':
+          $ref: '#/components/responses/Error404'
+      parameters:
+      - $ref: '#/components/parameters/chat_id'
+      - $ref: '#/components/parameters/limit'
+      - $ref: '#/components/parameters/offset'
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+  parameters:
+    user_id:
+      name: user_id
+      in: path
+      required: true
+      description: UUID ресурса.
+      schema:
+        $ref: '#/components/schemas/Id'
+    friend_id:
+      name: friend_id
+      in: path
+      required: true
+      description: UUID ресурса.
+      schema:
+        $ref: '#/components/schemas/Id'
+    chat_id:
+      name: chat_id
+      in: path
+      required: true
+      description: UUID ресурса.
+      schema:
+        $ref: '#/components/schemas/Id'
+    limit:
+      name: limit
+      in: query
+      description: Размер страницы.
+      schema:
+        type: integer
+        minimum: 1
+        default: 20
+        maximum: 100
+      example: 20
+    offset:
+      name: offset
+      in: query
+      description: Количество пропущенных элементов.
+      schema:
+        type: integer
+        minimum: 0
+        default: 0
+      example: 0
+  responses:
+    Error400:
+      description: Неверные параметры, JSON или бизнес-правила.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            code: bad_request
+            message: Неверные параметры, JSON или бизнес-правила.
+    Error401:
+      description: Токен отсутствует или недействителен.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            code: unauthorized
+            message: Токен отсутствует или недействителен.
+    Error403:
+      description: Недостаточно прав.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            code: forbidden
+            message: Недостаточно прав.
+    Error404:
+      description: Ресурс не найден.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            code: not_found
+            message: Ресурс не найден.
+    Error409:
+      description: Конфликт состояния ресурса.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            code: conflict
+            message: Конфликт состояния ресурса.
+    Error413:
+      description: Файл превышает 20 МиБ.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            code: payload_too_large
+            message: Файл превышает 20 МиБ.
+    Error415:
+      description: Неподдерживаемый Content-Type или тип файла.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            code: unsupported_media_type
+            message: Неподдерживаемый Content-Type или тип файла.
+  schemas:
+    Id:
+      type: string
+      format: uuid
+      example: 11111111-1111-4111-8111-111111111111
+    Error:
+      type: object
+      properties:
+        code:
+          type: string
+          example: not_found
+        message:
+          type: string
+          example: Ресурс не найден
+      required:
+      - code
+      - message
+      example:
+        code: not_found
+        message: Ресурс не найден
+    User:
+      type: object
+      properties:
+        id:
+          $ref: '#/components/schemas/Id'
+        name:
+          type: string
+          minLength: 1
+          maxLength: 100
+          example: Мария
+        bio:
+          type: string
+          maxLength: 1000
+          example: Изучаю Go
+      required:
+      - id
+      - name
+      example: &id004
+        id: 11111111-1111-4111-8111-111111111111
+        name: Мария
+    Media:
+      type: object
+      properties:
+        id:
+          $ref: '#/components/schemas/Id'
+        url:
+          type: string
+          format: uri
+          example: https://cdn.example.com/photo.jpg
+        content_type:
+          type: string
+          enum:
+          - image/jpeg
+          - image/png
+          - video/mp4
+        size_bytes:
+          type: integer
+          minimum: 1
+          maximum: 20971520
+        created_at: &id001
+          type: string
+          format: date-time
+          example: '2026-10-27T09:00:00Z'
+      required:
+      - id
+      - url
+      - content_type
+      - size_bytes
+      - created_at
+      example: &id002
+        id: 11111111-1111-4111-8111-111111111111
+        url: https://cdn.example.com/photo.jpg
+        content_type: image/jpeg
+        size_bytes: 1
+        created_at: '2026-10-27T09:00:00Z'
+    Post:
+      type: object
+      properties:
+        id:
+          $ref: '#/components/schemas/Id'
+        author_id:
+          $ref: '#/components/schemas/Id'
+        text:
+          type: string
+          maxLength: 10000
+          example: Мой первый пост
+        media:
+          type: array
+          items:
+            $ref: '#/components/schemas/Media'
+          maxItems: 10
+        created_at: *id001
+      required:
+      - id
+      - author_id
+      - text
+      - media
+      - created_at
+      example: &id006
+        id: 11111111-1111-4111-8111-111111111111
+        author_id: 11111111-1111-4111-8111-111111111111
+        text: Мой первый пост
+        media:
+        - *id002
+        created_at: '2026-10-27T09:00:00Z'
+    CreatePost:
+      type: object
+      properties:
+        text:
+          type: string
+          minLength: 1
+          maxLength: 10000
+          pattern: \S
+          example: Мой первый пост
+        media_ids:
+          type: array
+          items:
+            $ref: '#/components/schemas/Id'
+          minItems: 1
+          maxItems: 10
+          uniqueItems: true
+      required:
+      - text
+      - media_ids
+      anyOf:
+      - required:
+        - text
+      - required:
+        - media_ids
+      example:
+        text: Мой первый пост
+        media_ids:
+        - 11111111-1111-4111-8111-111111111111
+    Message:
+      type: object
+      properties:
+        id:
+          $ref: '#/components/schemas/Id'
+        chat_id:
+          $ref: '#/components/schemas/Id'
+        sender_id:
+          $ref: '#/components/schemas/Id'
+        text:
+          type: string
+          minLength: 1
+          maxLength: 4000
+          example: Привет!
+        created_at: *id001
+      required:
+      - id
+      - chat_id
+      - sender_id
+      - text
+      - created_at
+      example: &id008
+        id: 11111111-1111-4111-8111-111111111111
+        chat_id: 11111111-1111-4111-8111-111111111111
+        sender_id: 11111111-1111-4111-8111-111111111111
+        text: Привет!
+        created_at: '2026-10-27T09:00:00Z'
+    CreateMessage:
+      type: object
+      properties:
+        text:
+          type: string
+          minLength: 1
+          maxLength: 4000
+          pattern: \S
+          example: Привет!
+      required:
+      - text
+      example:
+        text: Привет!
+    Chat:
+      type: object
+      properties:
+        id:
+          $ref: '#/components/schemas/Id'
+        title:
+          type: string
+          example: Учимся Go
+        participant_ids:
+          type: array
+          items:
+            $ref: '#/components/schemas/Id'
+          minItems: 2
+          uniqueItems: true
+          example: &id003
+          - 11111111-1111-4111-8111-111111111111
+          - 22222222-2222-4222-8222-222222222222
+        updated_at: *id001
+        last_message:
+          $ref: '#/components/schemas/Message'
+      required:
+      - id
+      - title
+      - participant_ids
+      - updated_at
+      example: &id007
+        id: 11111111-1111-4111-8111-111111111111
+        title: Учимся Go
+        participant_ids: *id003
+        updated_at: '2026-10-27T09:00:00Z'
+    Page:
+      type: object
+      properties:
+        limit:
+          type: integer
+          minimum: 1
+          maximum: 100
+          example: 20
+        offset:
+          type: integer
+          minimum: 0
+          example: 0
+        has_more:
+          type: boolean
+          example: false
+      required:
+      - limit
+      - offset
+      - has_more
+      example: &id005
+        limit: 20
+        offset: 0
+        has_more: false
+    UserPage:
+      type: object
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/User'
+        page:
+          $ref: '#/components/schemas/Page'
+      required:
+      - items
+      - page
+      example:
+        items:
+        - *id004
+        page: *id005
+    PostPage:
+      type: object
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/Post'
+        page:
+          $ref: '#/components/schemas/Page'
+      required:
+      - items
+      - page
+      example:
+        items:
+        - *id006
+        page: *id005
+    ChatPage:
+      type: object
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/Chat'
+        page:
+          $ref: '#/components/schemas/Page'
+      required:
+      - items
+      - page
+      example:
+        items:
+        - *id007
+        page: *id005
+    MessagePage:
+      type: object
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/Message'
+        page:
+          $ref: '#/components/schemas/Page'
+      required:
+      - items
+      - page
+      example:
+        items:
+        - *id008
+        page: *id005
